@@ -1,0 +1,637 @@
+---
+title: 'Reducing Crime: An Exploratory Data Analysis'
+author: "Chandra Shekar Bikkanur, Jan Johnson, Adrian Lam, Shweta Sen"
+date: "December 11, 2018"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+
+# Introduction
+
+## Motivation
+
+<!-- As you understand it, what is the motivation for this team's report? Does the introduction as written make the motivation easy to understand? Is the analysis well-motivated? Note that we're not necessarily expecting a long introduction. Even a single paragraph is probably enough for most reports -->
+
+As part of a political campaign in North Carolina, the objective of our analysis is to identify the primary determinants of crime and suggest actionable policy changes to curtail rising crime rates. We leverage an exploratory data analysis (EDA) to pinpoint key relationships between crime rate and different geographic, demographic, crime, and financial indicators. We apply the findings of our EDA to generate models that can accurately measure crime rate as a function of its key predictors. While we are keen on identifying the relationships between crime rate and its underlying factors, our team is cautious to note that correlation does not indicate causation. Our analysis is based on data from 1987 across 91 counties in North Carolina. 
+
+## Package Installations
+
+```{r message=FALSE, warning=FALSE}
+
+#install.packages("ggplot2")
+#install.packages("car")
+#install.packages("corrplot")
+#install.packages("GGally")
+#install.packages("dplyr")
+#install.packages("stargazer")
+#install.packages("lmtest")
+library(car)
+```
+
+# Exploratory Data Analysis
+
+<!-- Is the EDA presented in a systematic and transparent way? Did the team notice any anomalous values? Is there a sufficient justification for any datapoints that are removed? Did the report note any coding features that affect the meaning of variables (e.g. top-coding or bottom-coding)? Can you identify anything the team could do to improve its understanding or treatment of the data? -->
+
+## Data Overview & Cleansing
+
+<!-- You will likely start with some general EDA to detect anomalies -->
+<!-- (missing values, top-coded variables, etc.) -->
+
+```{r summary, message=FALSE, warning=FALSE}
+
+# Loading the data
+CrimeData1 <- read.csv("crime_v2.csv")
+summary(CrimeData1)
+
+```
+
+The data set contains a total of 25 variables with 97 observations.
+
+The following observations were gathered from the summary table:
+
+### Addressing Incomplete Observations
+
+Each variable as 6 NAs. Closer inspection of the data reveals that all the NAs belong to the same rows (rows 92 through 97). As a result, rows 92 through 97 were removed as they do not contain any data. The removal of 6 rows leaves 91 complete observations. 
+
+```{r}
+
+# Removing the NAs so that we isolate the complete observations
+CrimeData2 <- CrimeData1[complete.cases(CrimeData1),]
+length(CrimeData2$crmrte)
+
+```
+
+### Reassigning Data Types
+
+The data type of variable *prbconv* is coded incorrectly as a factor when it should be numeric since it represents a probability. As a result, *prbconv* was transformed to a numeric variable. 
+
+Additionally, variable *pctmin80* is reflected as a percentage (e.g., 80) while variable *pctymle* is shown as a decimal (e.g., 0.8). The former variable represents the percentage of minorities in 1980 while the latter variable represents the percentage of young males in crime convictions. To standardize both variables, *pctmin80* was converted to a decimal to match the format of *pctymle*.
+
+```{r}
+
+class(CrimeData2$prbconv)
+CrimeData3 <- transform(CrimeData2, prbconv = as.numeric(as.character(prbconv)))
+class(CrimeData3$prbconv)
+
+# Dividing pctmin80 by 100 to allow decimal conversion (to match pctymle)
+CrimeData3 <- transform(CrimeData3, pctmin80 = pctmin80/100)
+summary(CrimeData3$pctmin80)
+
+```
+
+### Assessing Anomalous Observations
+
+Variables *prbarr* and *prbconv* have some anomalous values due to having probabilities greater than 1. The variable *prbarr*, defined as the ratio of arrests to offenses, has 1 observation greater than 1. The observation was not removed from the data set because it is plausible to have multiple arrests for the same conviction.  
+
+The variable *prbconv*, defined as the ratio of convictions to arrests, has 10 observations greater than 1. The observations were not removed from the data set because it is possible to be convicted of a crime multiple times but only be arrested once. 
+
+```{r}
+
+# Highlighting max values greater than 1 for each variable
+# Counting the number of observations greater than 1 for each variable
+
+summary(CrimeData3$prbarr)
+sum(CrimeData3$prbarr > 1)
+
+summary(CrimeData3$prbconv)
+sum(CrimeData3$prbconv > 1)
+
+```
+
+The max value of variable *wser* (representing the weekly wage in the service industry) exceeds the value of the 3rd quartile by almost a factor of 10, thus indicating the potential for an outlier. The observation was not removed, however, because it is plausible for an individuals in the service industry to earn $2,000 per week (particularly if they hold positions of leadership).
+
+```{r, message=FALSE, warning=FALSE}
+
+wser_hist <- hist(CrimeData3$wser, breaks = 100, plot = FALSE) 
+# plot = FALSE to avoid double plotting
+cuts <- cut(wser_hist$breaks, c(2000, Inf))
+# Shading in the suspected outlier
+plot(wser_hist, col = cuts, 
+     xlab = "Weekly Wage in Service Industry ($)",
+     ylab = "Frequency", 
+     main = "Histogram of Weekly Wages in Service Industry")
+
+```
+
+
+## Univariate Analysis
+
+### Crime Indicators
+
+In this section, we will focus on the following factors:
+
+1. Crime Rate
+2. Probability of Arrest
+3. Probability of Conviction
+4. Probability of Prison
+5. Average Sentence (in days)
+6. Offense Mix (face-to-face/other)
+
+
+```{r}
+
+par(mfrow=c(1,2))
+
+hist(CrimeData3$crmrte, breaks = 20, main = "Histogram of Crime Rate", 
+     cex.main = 0.8, xlab = "Crimes Committed Per Person")
+
+log_crmrte <- log(CrimeData3$crmrte)
+hist(log_crmrte, breaks = 20, main = "Histogram of Log of Crime Rate", 
+     cex.main = 0.8, xlab = "Log of Crimes Committed Per Person")
+
+```
+
+The dependent variable, crime rate, is defined as the number of crimes committed per person. The crime rate variable has two key limitations that may impact policy recommendations First, not all crimes are equal, and the variable fails to highlight the severity of certain crimes versus others (e.g., petty theft vs. homicide). Second, with a general average of crimes committed per person, we are unable to infer whether these crimes are committed by the same people, a small subset of multiple offenders, or by many first offenders. Since crime rate is skewed to the right, a log transform was performed to normalize the distribution. The log transform represents the percent change in crimes committed per person.
+
+With regards to probability of arrest, conviction, and prison, we would like to note that the 'probability' statistics are not necessarily probabilities, but rather proxied values as follows:
+
+Probability of Arrest = $\frac{Count of Arrests}{Count of Offenses}$
+
+Probability of Conviction = $\frac{Count of Convictions}{Count of Arrests}$
+
+Probability of Prison = $\frac{Count of Prison Sentences}{Count of Convictions}$
+
+```{r, message=FALSE, warning=FALSE}
+
+crime_crackdown <- rowMeans(CrimeData3[4:6])
+CrimeData3$crime_crackdown = crime_crackdown
+
+crime_stats <- rbind(
+data.frame(crimeType = "Probability of Arrest", crime = CrimeData3$prbarr, 
+           crime_mean = mean(CrimeData3$prbarr)),
+data.frame(crimeType = "Probability of Conviction", crime = CrimeData3$prbconv, 
+           crime_mean = mean(CrimeData3$prbconv)),
+data.frame(crimeType = "Probability of Prison", crime = CrimeData3$prbpris, 
+           crime_mean = mean(CrimeData3$prbpris)),
+data.frame(crimeType = "Average Sentence (Days)", crime = CrimeData3$avgsen, 
+           crime_mean = mean(CrimeData3$avgsen)),
+data.frame(crimeType = "Offense Mix: Face-to-Face/Other", crime = CrimeData3$mix, 
+           crime_mean = mean(CrimeData3$mix)),
+data.frame(crimeType = "Crime Crackdown", crime = CrimeData3$crime_crackdown, 
+           crime_mean = mean(CrimeData3$crime_crackdown)))
+
+library(ggplot2)
+ggplot(crime_stats, aes(x = crime)) + geom_histogram(bins = 50, color = "white") + facet_wrap(~crimeType, scales = "free") + geom_vline(aes(xintercept = crime_mean), color = "blue") + xlab("Crime Indicator") + ylab("Frquency")
+
+```
+
+As noted above, the probabilities are proxied values based on counts of offenses, arrests, convictions and prison sentences. While our general understanding of probabilities falls within the range of 0 and 1, the proxied variables show numerous occasions where the "probability" is higher than 1. As explained in our Data Cleaning section, we reason that a probability statistic greater than 1 is within reason as it is plausible for multiple offenses to result in one arrest and multiple arrests to result in only one conviction. While the histograms of the crime indicators exhibit slight skewness, no transforms were applied since they are reasonably bell-shaped. 
+
+From external literature, a distinction is often made between the certainty of punishment (i.e., get caught and convicted) and severity of punishment. Of the two, it is demonstrated that police deter crime by increasing the perception that criminals will be caught and punished, but policies of increasing the severity of punishment do little to deter crime. To couple crime indicators and understand likelihood of penalty, a new variable ("Crime Crackdown") was created as an average of probability of arrest, probability of conviction, and probability of prison.
+
+### Demographic Indicators
+
+In this section, we will focus on the following factors:
+
+1. Police per Capita
+2. Density
+3. Percent Minorities (1980)
+4. Percent Male
+
+```{r, message=FALSE, warning=FALSE}
+
+demographics <- rbind(
+data.frame(demogType = "Police per Capita", demographic = CrimeData3$polpc, 
+           demog_mean = mean(CrimeData3$polpc)),
+data.frame(demogType = "Density (People per Sq. Mile)", demographic = CrimeData3$density, 
+           demog_mean = mean(CrimeData3$density)),
+data.frame(demogType = "Log Density", demographic = log(CrimeData3$density), 
+           demog_mean = mean(log(CrimeData3$density))),
+data.frame(demogType = "Percent Minority (1980)", demographic = CrimeData3$pctmin80, 
+           demog_mean = mean(CrimeData3$pctmin80)),
+data.frame(demogType = "Percent Young Male (Ages 15-24)", demographic = CrimeData3$pctymle, 
+           demog_mean = mean(CrimeData3$pctymle)))
+
+library(ggplot2)
+ggplot(demographics, aes(x = demographic)) + geom_histogram(bins = 50, color = "white") + facet_wrap(~demogType, scales = "free") + geom_vline(aes(xintercept = demog_mean), color = "red") + xlab("Demographic Indicator") + ylab("Frquency") 
+
+```
+
+We note some interesting potential outliers in the above histograms for police per capita and density. Police per capita exhibits a normal curve, with outliers to the right, while people per square mile exhibits greater positive skew. Due to significant skew of density, a log transform was applied to help normalize the distribution.
+
+### Financial Indicators
+
+In this section, we will focus on the following factors:
+
+1. Tax per Capita
+2. Wages: Construction, Transport & Utilities, Retail, Finance & Real Estate, Service, Manufacturing, Federal, State, and Local 
+
+```{r, message=FALSE, warning=FALSE}
+
+wages <- rbind(
+data.frame(wageType = "Tax per Capita", wage = CrimeData3$taxpc, 
+           mean_wage = mean(CrimeData3$taxpc)), 
+data.frame(wageType = "Construction Wage", wage = CrimeData3$wcon, 
+           mean_wage = mean(CrimeData3$wcon)),
+data.frame(wageType = "Transport & Utilities Wage", wage = CrimeData3$wtuc, 
+           mean_wage = mean(CrimeData3$wtuc)),
+data.frame(wageType = "Retail & Wholesale Wage", wage = CrimeData3$wtrd, 
+           mean_wage = mean(CrimeData3$wtrd)),
+data.frame(wageType = "Finance & Real Estate Wage", wage = CrimeData3$wfir, 
+           mean_wage = mean(CrimeData3$wfir)),
+data.frame(wageType = "Service Wage", wage = CrimeData3$wser, 
+           mean_wage = mean(CrimeData3$wser)),
+data.frame(wageType = "Manufacturing Wage", wage = CrimeData3$wmfg, 
+           mean_wage = mean(CrimeData3$wmfg)),
+data.frame(wageType = "Federal Wage", wage = CrimeData3$wfed, 
+           mean_wage = mean(CrimeData3$wfed)),
+data.frame(wageType = "State Wage", wage = CrimeData3$wsta, 
+           mean_wage = mean(CrimeData3$wsta)),
+data.frame(wageType = "Local Wage", wage = CrimeData3$wloc, 
+           mean_wage = mean(CrimeData3$wloc)))
+
+library(ggplot2)
+ggplot(wages, aes(x = wage)) + geom_histogram(bins = 50, color = "white") + facet_wrap(~wageType, scales = "free") + geom_vline(aes(xintercept = mean_wage), color = "green") + xlab("Financial Indicator ($)") + ylab("Frquency")
+
+```
+
+We observe that all wages aside from service wage (due to one high observation) are approximately normally distributed. Although the wages are currently split by industry, separate categories for wages were created based on the public sector (containing federal, state, and local wages) and private sector (containing all other wages). 
+
+```{r, message=FALSE, warning=FALSE}
+
+public_wage <- CrimeData3$wfed + CrimeData3$wsta + CrimeData3$wloc
+
+private_wage <- CrimeData3$wcon + CrimeData3$wtuc + CrimeData3$wtrd + 
+  CrimeData3$wfir + CrimeData3$wser + CrimeData3$wmfg
+
+total_wage <- CrimeData3$wfed + CrimeData3$wsta + CrimeData3$wloc + 
+  CrimeData3$wcon + CrimeData3$wtuc + CrimeData3$wtrd + CrimeData3$wfir + 
+  CrimeData3$wser + CrimeData3$wmfg
+
+grouped_wages <- rbind(
+data.frame(wageType = "Public Sector Wages", wage = public_wage, 
+           mean_wage = mean(public_wage)),
+data.frame(wageType = "Private Sector Wage", wage = private_wage, 
+           mean_wage = mean(private_wage)),
+data.frame(wageType = "Total Wages (Private + Public)", wage = total_wage, 
+           mean_wage = mean(total_wage)))
+
+ggplot(grouped_wages, aes(x = wage, fill = wageType)) + geom_density(alpha=0.25) + labs(x = "Weekly Wage ($)", y = "Density") 
+
+```
+
+As anticipated, private sector wages are substantially higher (almost double) than public sector wages. The private sector wages are also more normally distributed than the public sector wages, which are skewed to the right.
+
+### Geographic Indicators
+
+In this section, we explore the breakdown of our west, central, and urban variables.
+
+```{r}
+
+CrimeData3$other <- 0
+CrimeData3$other[(CrimeData3$west == 0 & CrimeData3$central == 0 & CrimeData3$urban == 0)] <- 1
+
+cat(paste(
+  paste("number of western counties:", nrow(subset(CrimeData3, west == 1))),
+  paste("number of central counties:", nrow(subset(CrimeData3, central == 1))),
+  paste("number of urban counties:", nrow(subset(CrimeData3, urban == 1))),
+  paste("number of other counties:", nrow(subset(CrimeData3, other == 1))),
+  sep = "\n"
+  ))
+
+```
+
+In our data set, the geographic parameters are represented as Boolean variables. We observe that almost 58% of our observations are located in west and central North Carolina. More than one third of our observations stem from "other" counties that are not western, central, or urban. With only 8% of the counties being urban, we anticipate that many of the counties support rural or suburban communities. 
+
+## Analysis of Key Relationships
+
+We begin by analyzing the correlation coefficients between all of the variables to establish a cursory overview of key relationships.
+
+```{r}
+
+colnames(CrimeData3)
+library(GGally)
+ggcorr(CrimeData3[, 3:26], size = 3)
+
+```
+
+From the correlation matrix, we see that crime rate has strong negative correlations with probability of arrest and west, and strong positive correlations with population density and urban. It is also important to note that west and percent minority have a pronounced correlation, in addition to density and central. 
+
+### Relevant Transformations
+
+As previously noted, crime rate and population density both have positive skews, so a log transform was applied to normalize the distributions. 
+
+```{r}
+
+par(mfrow=c(1,2))
+
+hist(CrimeData3$crmrte, breaks = 20, main = "Histogram of Crime Rate", 
+     cex.main = 0.8, xlab = "Crimes Committed Per Person")
+
+log_crmrte <- log(CrimeData3$crmrte)
+hist(log_crmrte, breaks = 20, main = "Histogram of Log of Crime Rate", 
+     cex.main = 0.8, xlab = "Log of Crimes Committed Per Person")
+
+```
+```{r}
+
+par(mfrow=c(1,2))
+
+hist(CrimeData3$density, breaks = 20, main = "Histogram of Density", 
+     cex.main = 0.8, xlab = "Density (Population per Sq. Mile)", cex.lab = 0.8)
+
+log_density <- log(CrimeData3$density)
+hist(log_density, breaks = 20, main = "Histogram of Log of Density", 
+     cex.main = 0.8, xlab = "Log of Density (Population per Sq. Mile)", cex.lab = 0.8)
+
+```
+
+### Crime Rate & Probabilities of Arrest and Conviction
+
+The relationship between crime rate and probability of arrest was investigated because it exhibited relatively strong relation in the correlation matrix. Further analysis reveals that there is significant scatter between the two variables. Crime rate was also plotted against probability of conviction and crime crackdown (the average of probability of arrest, conviction, and prison) to understand how crime rate was impacted by rigor of law enforcement. The results show that probability of conviction has a similar distribution probability of arrest when mapped against crime rate.  
+
+```{r}
+
+par(mfrow=c(1,3))
+
+plot(CrimeData3$prbarr, log(CrimeData3$crmrte), xlab = "Probability of Arrest", ylab = "Log Crime Rate")
+m <- lm(formula = log(crmrte) ~ prbarr, data = CrimeData3)
+abline(m, col = "red", lwd = 2)
+coef(m)
+
+plot(CrimeData3$prbconv, log(CrimeData3$crmrte), xlab = "Probability of Conviction", ylab = "Log Crime Rate")
+p <- lm(formula = log(crmrte) ~ prbconv, data = CrimeData3)
+abline(p, col = "blue", lwd = 2)
+coef(p)
+
+plot(crime_crackdown, log(CrimeData3$crmrte), xlab = "Crime Crackdown", ylab = "Log Crime Rate")
+p <- lm(formula = log(CrimeData3$crmrte) ~ crime_crackdown)
+abline(p, col = "green", lwd = 2)
+coef(p)
+
+```
+
+### Crime Rate & Demographics
+
+```{r, message=FALSE, warning=FALSE}
+
+library(car)
+scatterplotMatrix(~ log(crmrte) + log(density) + polpc + pctmin80, data = CrimeData3)
+
+```
+
+We observe that police per capita is not strongly influenced by population density. The result is interesting because typically, we expect that more densely populated locales will have higher police per capita. Furthermore, we see that as police per capita increases, crime rate also increases (which contradicts our initial intuition). Crime rate increases as density increases, which does align with our expectations. Thus, crime rate is positively correlated with both population density and police per capita. We also note that percent minority does not noticeably impact police per capita and log(density). 
+
+### Crime Rate and Crime Indicators
+
+```{r, message=FALSE, warning=FALSE}
+
+library(ggplot2)
+scatterplotMatrix(~ log(crmrte) + avgsen + crime_crackdown + mix, data = CrimeData3)
+
+```
+
+We observe that offense mix does not impact crime rate, average sentence, or crime crackdown (which is the average of the probabilities of arrest, conviction, and prison). It is evident as crime crackdown increases, average sentence increases and log(crime rate) decreases. The observation is expected because crime crackdown is a measure of how well crime is penalized. It was also hypothesized that as average sentence increased, crime rate would decrease (since harsh sentencing could act as a deterrent to crime). However, we observe the relationship between log(crime rate) and average sentence is not highly correlative. 
+
+### Crime Rate and Financial Indicators
+
+```{r, message=FALSE, warning=FALSE}
+
+library(ggplot2)
+scatterplotMatrix(~ log(crmrte) + total_wage + taxpc, data = CrimeData3)
+
+```
+
+An interesting observation is that as tax per capita increases, log(crime rate) also appears to increase. Our expectation was that counties with higher tax per capita would tend to encompass more affluent areas, which typically experience lower crime. Additionally, while total wage (sum of public and private wages) increases, log(crime rate) increases and then decreases due to one observation at the tail of the graph. The finding also counters intuition because it expected that as wage increases, crime would decrease; the results show that even the "wealthier" subset on the population is prone to crime.
+
+
+### Crime Rate and Geography
+
+```{r}
+
+CrimeData3$region_split1 <- ifelse(CrimeData3$west == 1, "west", ifelse(CrimeData3$central == 1, "central", "other"))
+
+plot1 <- ggplot(CrimeData3, aes(x= prbarr, y = log(crmrte))) + geom_point() + facet_grid(region_split1~.) + geom_smooth(method = "lm", se = FALSE) + xlab("Probability of Arrest") + ylab("Log Crime Rate")
+
+plot2 <- ggplot(CrimeData3, aes(x= prbconv, y = log(crmrte))) + geom_point() + facet_grid(region_split1~.) + geom_smooth(method = "lm", se = FALSE) + xlab("Probability of Conviction") + ylab("Log Crime Rate")
+
+library(gridExtra)
+grid.arrange(plot1, plot2, ncol=2)
+
+```
+
+From the EDA, we observed that crime rate has strong correlations with probability of arrest and probability of conviction, along with the variable west. When we plot both probabilities as a function of geographic location (west, other, central), it appears that the distributions between each region are largely similar and exhibit similar slopes. 
+
+# Model Specifications
+
+<!-- Overall, is each step in the model building process supported by EDA? Is the outcome variable (or variables) appropriate? Did the team consider available variable transformations and select them with an eye towards model plausibility and interperability? Are transformations used to expose linear relationships in scatterplots? Is there enough explanation in the text to understand the meaning of each visualization? -->
+
+The predominant research question is as follows: what is the impact of explanatory variables on crime rate? Our dependent variable, crime rate, is defined as the number of crimes committed per person. We applied a log transform to crime rate to address the skewness in the distribution and improve model fit (keeping in mind that there are no values for "0" crime, where log would be undefined). The log of crime rate can be interpreted as the percent change in crime rate. We leveraged our EDA to isolate strong correlative relationships, which we incorporate into our models below.
+
+## Model 1: Explanatory Variables
+
+```{r}
+
+model1 <- lm(log(crmrte) ~ log(density) + prbarr + prbconv, data = CrimeData3)
+summary(model1)
+
+```
+
+From our EDA and relevant transformations of the variables, we noted that log transformed crime rate was positively correlated with log transformed population density, probability of arrest, and probability of conviction. The preliminary model yields an $R^2$ value of 53.7%, indicating that approximately 54% of all variation in crime rate can be explained by population density, probability of arrest, and probability of conviction. We interpret our results to mean that for every percentage increase in probability of arrest and probability of conviction, the percent change in crime rate decreases by 1.53 and 0.68, respectively. We observe that all the coefficients of model 1 are statistically significant. From the Residuals vs. Fitted Values plot below, we can see that the model 1 has a highly curved red spline, indicating that it does not meet the zero conditional mean assumption. We also note that there are a few observations that have high influence (from Residuals vs. Leverage plot) on the model parameters. 
+
+```{r}
+
+par(mfrow=c(2,3))
+plot(model1, which=1:6, col = 'blue')
+
+```
+
+## Model 2: Explanatory Variables + Select Covariates
+
+```{r}
+
+model2 <- lm(log(crmrte) ~ log(density) + prbarr + prbconv + pctmin80 + polpc, data = CrimeData3)
+summary(model2)
+
+```
+
+Our EDA showed that crime rate carries a strong relationship with demographic variables such as percent minority and police per capita, which we added to the our second model. The revised model yields an $R^2$ value of 78.4%, indicating that 78.4% of all variation in crime rate can be explained by population density, probability of arrest, probability of conviction, percent male, percent minority, and police per capita. Also, all the independent variables used for this model are highly significant in explaining percent change in crime rate.
+
+```{r}
+
+par(mfrow=c(2,3))
+plot(model2, which=1:6, col = 'blue')
+
+```
+
+We also see from above Residuals vs. Fitted Values plot, the model satisfies the zero conditional mean assumption. Scale-Location plot suggests that the model has homoskedasticity in variance of residuals. From Cook's distance plot, we can see that the observations 50, 51 and 79 have high leverage. We extract the three observations below to understand the reason for the high leverage.
+
+```{r}
+
+model2var <- c('density', 'prbarr', 'prbconv', 'pctmin80', 'polpc' )
+CrimeData3[c(50, 51, 79), model2var]
+
+```
+
+From above data frame for observations 50, 51 and 79, we can see that there are some outliers in `prbarr` (1.090910 > 1), `prbconv` (1.50000 > 1) and `pctmin80` (0.2539). From the Introduction, we rationalized that it is plausible to have probability of arrest and probability of conviction be higher than 1 because they are not true probabilities by definition. The outlier for percent minority comes from a county that is not west, central, or urban. Without further details, we are not able to validate if the 25% minority population is incorrect. As a result, even though observations 50, 51, and 79 have high leverage, they are practically plausible and will remain in the data set.
+
+## Model 3: Explanatory Variables + All Covariates
+
+```{r}
+
+model3 <- lm(log(crmrte) ~ log(density) + prbarr + prbconv + pctymle + pctmin80 + polpc + total_wage + avgsen + taxpc + mix + urban + west + central + other, data = CrimeData3)
+summary(model3)
+
+```
+
+When we added all relevant covariates, the model generated an $R^2$ value of 80.11%. Between models 2 and 3, adding 9 covariates increased the goodness of fit by less than 2%. In addition, none of the added covariates are significant.
+
+## Model Comparison
+
+```{r}
+
+AIC(model1)
+AIC(model2)
+AIC(model3)
+
+```
+
+The Akaike Information Criterion (AIC) estimates the quality of a statistical model, with a lower value pointing towards the preferred model to maintain parsimony. From the results, it is evident that the second model (explanatory variable + select covariates) is preferred and that adding several additional coviarates (as demonstrated in model 3) does not appreciably improve the fidelity of the model.
+
+## Verification of CLM Assumptions
+
+As shown by the AIC analysis, the second model is the most parsimonious model. For this reason, we will focus on model 2 to verify CLM assumptions, but reference other models for comparison when deviations are observed.
+
+```{r}
+
+par(mfrow=c(2,3))
+plot(model2, which=1:6, col = 'blue')
+
+```
+
+### CLM 1 - Linearity in Parameters
+
+For all three models, we assume linearity in parameters as default. Nonetheless, the first chart (Residuals vs Fitted) shows that residuals are small, supporting the linearity assumption.
+
+### CLM 2 - Random Sampling
+
+Without in-depth understanding of the study design and data collection methodology, we cannot confirm if the sampling is truly random. Given that North Carolina has 100 counties and our data set captures 91 counties, the data does appear to be representative of the population. The distribution for log(crime rate) is also approximately normal. Based on the information we have, there does appear to be some geographic sampling bias since the data set only contains breakouts by regions of west, central, and urban. In terms of North Carolinan geography, the eastern and central regions are the largest with the smallest being the western region (containing the Appalachian mountains). As a result, it is reasonable that only 23 of the 91 counties represented are western. While we cannot fully confirm if the data is randomly sampled, the distribution of the variables in the data set lends to supporting the assumption.
+
+```{r}
+
+cat(paste(
+  paste("number of western counties", nrow(subset(CrimeData3, west == 1))),
+  paste("number of central counties", nrow(subset(CrimeData3, central == 1))),
+  paste("number of urban counties", nrow(subset(CrimeData3, urban == 1))),
+  sep = "\n"
+))
+
+```
+
+### CLM 3 - No Perfect Multicollinearity
+
+For verification of the no multicollinearity assumption, we plot a correlation matrix between all independent variables.Based on the results, we do not observe any perfect correlation (where correlation = 1) between the variables included in our model. As a result, we can verify that we have no multicollinearity between our input variables.
+
+```{r}
+
+CrimeData3$logcrmrte = log(CrimeData3$crmrte)
+CrimeData3$logdensity = log(CrimeData3$density)
+
+Corr = (subset(CrimeData3, select=c("logdensity", "prbarr", "prbconv", "pctmin80", "polpc")))
+(Cor = cor(Corr))
+
+```
+
+### CLM 4 - Zero Conditional Mean
+
+Based on the Residuals vs. Fitted Values plot above, we see that the red spline is mostly horizontal and does not exhibit curvature. We also observe 3 data points that carry relatively high residuals, but those points were vetted in the model 2 analysis of the previous section. While we observe a slight upward bend towards the right of the Fitted Values, we do not consider it to be a violation of zero conditional mean simply because there are fewer data points at that extreme. 
+
+### CLM 5 - Homoscedasticity
+
+Based on the Residuals vs. Fitted Values plot above, we see that the band of values has approximately uniform thickness. From the Scale-Location plot, we also observe that the points are scattered at random across the graph, exhibiting no discernible pattern in the residuals. As a result, the assumption of homoskedasticity holds.
+
+### CLM 6 - Normality of Residuals
+
+From the Normal Q-Q plot above, we see that observations mostly lie along the 45 degree line. The Residuals vs. Fitted Values plot, coupled with the normal Q-Q plot, show sufficient evidence to support normality of residuals.
+
+# Regression Table
+
+<!-- You will display all of your model specifications in a regression table, using a package like stargazer to format your output. It should be easy for the reader to find the coefficients that represent key effects near the top of the regression table, and scan horizontally to see how they change from specification to specification. Since we won't cover inference for linear regression until unit 12, you should not display any standard errors at this point. You should also avoid conducting statistical tests for now (but please do point out what tests you think would be valuable).
+library(stargazer)
+stargazer(CrimeData1)
+
+Are the model specifications properly chosen to outline the boundary of reasonable choices? Is it easy to find key coefficients in the regression table? Does the text include a discussion of practical significance for key effects? -->
+
+We can make the following interpretations from our regression table below:
+
+a. In model 1, all the explanatory variables (logarithmic transformed density, probability of arrest, probability_ of conviction) are significant in explaining the variation in percent change in crime rate. The coefficient for probability of arrest is more than two times higher than the coefficient for probability of conviction, indicating that probability of arrest is a stronger driver for lowering the percent change in crime rate.
+
+b. As more variables were added to the model, the coefficient of log(density) progressively decreases between models 1 through 3, suggesting that we are adding variables that interact with density (e.g., police per capita, urban, percent minority, and total wages). Nonetheless, the standard error remains small enough for log(density) to have a significant effect on log(crime rate).
+
+c. Police per capita and percent minority both have statistically significant effects. However, the standard error of police per capita is very high, suggesting there is high dispersion about the population mean. As model 2 suggests, increasing police per capita by 1 unit translates to almost a 250 percent increase in crime rate. 
+
+d. None of the coviariates added to model 3 are statistically significant as the coefficients of the variables are smaller than their standard errors, thereby lowering the significance. The adjusted $R^2$ value for model 3, which incorporates parsimony, is less than that of model 2, indicating that adding 9 additional coviariates is not resource-efficient. 
+
+```{r results = "asis"}
+
+library(stargazer)
+stargazer(model1, model2, model3, type = "latex", font.size = "small", float = FALSE,
+          title = "Linear Models Predicting Percent Crime Rate",
+          omit.table.layout = "n") # Omit more output related to errors
+
+```
+
+# Omitted Variables Discussion
+
+<!-- After your model building process, you should include a substantial discussion of omitted variables. Identify what you think are the 5-10 most important omitted variables that bias results you care about. For each variable, you should estimate what direction the bias is in. If you can argue whether the bias is large or small, that is even better. State whether you have any variables available that may proxy (even imperfectly) for the omitted variable. Pay particular attention to whether each omitted variable bias is towards zero or away from zero. You will use this information to judge whether the effects you find are likely to be real, or whether they might be entirely an artifact of omitted variable bias.
+
+Did the report miss any important sources of omitted variable bias? For each omitted variable, is there a complete discussion of the direction of bias? Are the estimated directions of bias correct? Does the team consider possible proxy variables, and if so do you find these choices plausible? Is the discussion of omitted variables linked back to the presentation of main results? In other words, does the team adequately re-evaluate their estimated effects in light of the sources of bias? -->
+
+When using OLS, a key assumption is that the error term is uncorrelated with the regressors. The presence of omitted variables violates the assumption because it causes the OLS estimator to be biased and inconsistent. As a result, observed effects are attributed to the reported explanatory variables when in reality, the effects may be driven by the missing variables. There are several omitted variables in the data set that could potentially bias the results obtained in our models, as described below.  
+
+1. **Education Level**: There is potential covariance between lower levels of education and lower wages, along with unemployment. Research indicates that education can curtail crime, with GED attainment contributing to a 14-26% reduction in crime rate (https://eml.berkeley.edu/~moretti/lm46.pdf). Lower education levels can impact the tax per capita and wage data, although it is not included in the model. A potential proxy is tax per capita, however it may not be a reliable indicator of education due to the hidden effects of tax loopholes and wage arbitrage. If added to the data set, we anticipate education level will be negatively correlated with crime rate and positively correlated with wages and tax per capita. The direction of bias on the total wage and tax per capita coefficients is expected to be positive and away from zero.   
+
+2. **Income Inequality**: An equal income distribution can contribute to lower crime rates, as supported by several studies (https://www.economist.com/graphic-detail/2018/06/07/the-stark-relationship-between-income-inequality-and-crime). We anticipate income inequality to be most prevalent in high-density locales, thereby increasing the density coefficient. Income inequality could perhaps be caculated as a decile ratio using the wage variables, whereby the income earned by the top 10% of households is divided by the income earned by the poorest 10% of households. However, additional tax and county population details are needed due to reliably characterize income dispersion. If added to the data set, income inequality is projected to have a positive correlation with crime rate and density. The direction of bias on the density coefficient is expected to be positive and away from zero.
+
+3. **Family Structure**: Family structure could be correlated with probability of arrest, as individuals who are raised in an intact married family are less likely to commit a crime when compared to individuals raised in split families (http://marripedia.org/effects_of_family_structure_on_crime). A strong proxy for family structure is not available in the data set, but could be inferred from other variables such as divorce rate, family size, and proportion of single-parent homes to total households. If added to the data set, we expect that intact family structure will be negatively correlated with crime rate and probability of arrest. The direction of bias on the probability of arrest coefficient is expected to be negative and away from zero. 
+
+4. **Family History**: Family history can be correlated with probability of arrest and probability of conviction. Studies show that individuals with a family history of violence are likely to be repeat offenders in the criminal system (http://www.sakkyndig.com/psykologi/artvit/frisell2010.pdf). A reliable proxy for familial incarceration rate is not available in the data set; a variable would need to be created to show the percentage of offenders with family history of crime. If added to the data set, we anticipate family history of crime to be positively correlated with crime rate, probability of arrest, and probability of conviction. We expect the direction of bias on said coefficients to be positive and away from zero.
+
+5. **Recidivism**: Several studies suggest that an individual who has committed a crime in the past is more likely to re-commit crimes in the future. In fact, data from the Bureau of Justice Statistics show that almost 60% of adult offenders have history of one or more prior offenses (https://www.bjs.gov/index.cfm?ty=tp&tid=17). Thus, the proportion of individuals with prior convictions in a county could be an indicator of crime rate. The bias is most likely to impact locales with lower wages and tax per capita. As it stands, the data set does not include a proxy for recidivism since we are missing background on the economic indicators. If added to the data set, recidivism is expected to be positively correlated with crime rate and negatively correlated with wage. We expect the direction of bias on the total wage coefficient to be negative and toward zero.
+
+6. **Family Income & Cost of Living**: While the data includes averages for individual wages, it does not detail combined income at the family level. Family income and cost of living can be correlated with population density. Higher cost of living may push individuals to commit crimes due to inadequate income. Hence, the variable is expected to have a positive correlation with crime rate and bias the density coefficient in the positive direction away from zero.  
+
+7. **Trust in Law Enforcement (Corruption)**: Faith in law enforcement can impact probability of arrest and the general perception of crime rate (https://scholarworks.wmich.edu/cgi/viewcontent.cgi?referer=https://www.google.com/&httpsredir=1&article=2703&context=jssw). Individuals who place confidence in the honesty, integrity, and capabilities of law enforcement are more likely to report crimes. Trust in law enforcement could be measured through public surveys, corruption indices, or the number of tips provided for each reported crime. If added to the data set, trust in law enforcement would be negatively correlated with crime rate.
+
+8. **Police Bias**: The United States criminal justice system is not immune to bias, and studies have shown that the race, physical appearance, and/or personality of a defendant can bias the likelihood of conviction (https://www.washingtonpost.com/news/opinions/wp/2018/09/18/theres-overwhelming-evidence-that-the-criminal-justice-system-is-racist-heres-the-proof/?noredirect=on&utm_term=.8b182e1fce0d). Biases expressed by police and the justice system can impact the probability of arrest and probability of conviction. The data set does not have a strong proxy for police bias, but a substitute variable could perhaps be the proportion of wrongful convictions for a given area.  
+
+9. **Unreported Crime**: Crimes are often unreported for several reasons: fear of victim blaming, victims believing nothing will be done to penalize the offenders, and fear of reprisals from smaller communities (e.g., low-income groups, undocumented immigrants, or gangs). The EDA findings indicated that crime rate and police per capita are positively correlated, so it is possible that individuals are more likely to report crimes in heavily policed areas. As a result, police per capita could function as a proxy for unreported crime, however it could be more valuable add resolution to the geographic parameters (rural, urban, west) instead since they can be used to isolate the small community boroughs where crime is more likely to be under-reported. If the effects of unreported crime factored into the data set, crime rate should increase and probability of arrest should decrease. We anticipate the direction of bias on the probability of arrest coefficient to be negative and away from zero. 
+
+# Conclusions
+
+<!--Does the conclusion address the big-picture concerns that would be at the center of a political campaign? Does it raise interesting points beyond numerical estimates? Does it place relevant context around the results? -->
+
+## Statistical Findings 
+
+The observe that 78.4% of the variation in percent change of crime rate can be explained by crime indicators (prbarr, prbconv) and demographic factors (density, pctmin80, and polpc). Crime rate is not strongly predicted by financial or geographic variables (such as wages or west/north), and adding additional covariates did not increase fit appreciably. Of our three models, we found our second model (explanatory variables + select covariates) is most appropriate to maintain parsimony:
+
+$$ log(crmrte) = 0.11833 log(density) - 2.44164 prbarr - 0.86350 prbconv + 1.28856 pctmin80 + 248.97636 polpc - 3.08991 $$
+
+## Practical Significance (Policy Recomendations)
+
+The statistical analysis sheds light on opportunities to reshape crime policy and reduce crime rate in North Carolina. We frame our policy recommendations based on our second model, which suggests a strong positive relationship between log(crime rate), the probability of arrest, and the probability of conviction given arrest. When designing campaign policy, however, it is important that we avoid encouraging or incentivizing police arrests because it could lead to wrongful charges and/or civil liberty infringements. We also observe that log(crime rate) carries statistically significant relationships with log(density), percent minority, and police per capita.
+
+1. **Invest in surveillance and forensic technology, particularly in high-density areas.** Installing and upgrading surveillance cameras can improve probability of arrest because law enforcement will gain more visibility into criminal activity (along with evidence to support convictions). Similarly, investing in new forensic analysis tools and resources can increase probability of conviction. The model indicates that log(crime rate) has a positive correlation with log(density), so it may be effective to centralize law enforcement resources in neighborhoods with high population density. 
+
+2. **Ensure strategies are geography-specific.** Since population density is a strong predictor of crime rate, a central crime reduction strategy may not be effective across geographic areas. Rather, it is important to design strategies specific to county geographic makeup, particularly as rural and sparsely populated communities will require different crime curbing policies than urban and densely populated communities. 
+
+3. **Engage with minority communities to understand drivers of crime.** The model suggests that percent minority is a significant contributor to crime rate. Since the data itself does not provide enough resolution to differentiate between the sociocultural, economic, and political practices of minority and non-minority communities, it is necessary to meet with minority communities before developing policies to curb crime. By speaking with individuals in minority communities, it is a step forward in understanding their challenges and potential behavioral patterns leading to crime. For example, is crime high in minority communities because wages are too low? Is there an anti-minority sentiment? Are minority groups more prone to report crime than their non-minority counterparts?
+
+4. **Investigate police efficiency and redistribute police officers to other precincts.** Although it counters intuition, the model shows that crime rate increases as police per capita increases. The observation suggests that police officers may not be doing an effective job at preventing, decreasing, and monitoring crime. It is possible that the precincts are overstaffed, leaving many officers with little work. The result could also potentially point to bribery or police corruption. As a result, it could be worthwhile to explore the effect of reassigning police officers to other precincts to decrease police per capita and optimize headcount, in addition to launching a corruption investigation. 
+
+## Further Research
+
+One of the largest gaps in our data set is the lack of specificity regarding the nature of crime. Under most conditions, offenses like disorderly conduct, vandalism, and petty theft are treated differently from offenses like homicide, kidnapping, or arson. As a result, the data set fails to differentiate between misdemeanors, felonies, and general infractions, all of which entail variable levels of severity. To improve the analysis, it is necessary to collect additional details on crime classification, the dollar value of associated damages, and the judicial standards for punishment (e.g., jail time, probation time, fines, etc.). Furthermore, many existing studies support the observation that police per capita and crime rate are negatively correlated. Since our findings indicate the opposite (i.e., positive correlation), it is worth investigating the root cause of more police leading to more crime. In addition, we noted several omitted variables that are potentially biasing the coefficients of our model. As part of a further analysis, it would be beneficial to gather data on financial metrics (e.g., income inequality, cost of living, family income) and recidivism to help strengthen the model. 
