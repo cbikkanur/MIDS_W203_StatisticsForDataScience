@@ -1,0 +1,309 @@
+---
+title: "Lab 2: Probability Theory"
+author: "Bikkanur, Chandra Shekar"
+date: "October 22, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# **1. Meanwhile, at the Unfair Coin Factory**
+
+It is given that there is a bucket that contains 100 coins. 99 of those are fair coins, but one of them is a trick coin that always comes up heads. Let T be the event that we select the trick coin and that means P(T)=0.01. Probability of getting heads in all k times is given by $P(H_k)$ which is $1/2^k$.
+
+**a. ** $P(T|H_k)$:
+
+From the the given data, we know that $P(T) = 0.01$ and $P(H) = 0.99$
+Also, if the the coin selected is a tricked one, then the probability of getting a head is 1 i,e. $P(H_k|T) = 1$.
+
+From Baye's theorem we know that:
+$$
+P(H_k) = P(H_k|T). P(T) + P(H_k|!T).P(!T) = (1 * 1/100) + (1/2^k).(99/100) = 1/100.(1 + 99/2^k)
+$$
+$$P(H_k) = 1/100.(1 + 99/2^k)$$
+  $$
+          P(T|H_k) = P(T). P(H_k|T)/P(H_k)
+                   = (0.01 * 1)/(1/100.(1 + 99/2^k))
+                   = 1/(1 + 99/2^k)
+  $$
+$$
+  P(T|H_k) = 1/(1 + 99/2^k)
+$$
+
+**b. ** For $P(T|H_k) > 0.99$, K value:
+
+$$
+P(T|H_k) > 0.99 \implies 1/(1 + 99/2^k) > 0.99 \implies k > log_2(99 * 99)
+$$
+$$
+\implies k > log_2(9801) = 13.25871 = 14
+$$
+So, when k = 14, the conditional probability that we have the trick coin is higher than 0.99
+
+#**2. Wise Investments**
+ We are given two companies and the probability that they reach unicorn status is given as $P(S) =3/4$. Let random variable X be the total number of companies that reach unicorn status. X can take on the values 0, 1, and 2. From the given data,  X is what we call a binomial random variable with parameters n =2 and p =3/4.
+
+X   |  P(X)
+----|--------
+0   | $1/4 * 1/4$
+1   | $1/4 * 3/4$
+2   | $3/4 * 3/4$
+
+##**a. **
+
+Complete expression for the probability mass function of X, cmf(X):
+From binomial probability distribution, we know that an experiment that consists of n trials and results in x successes and the probability of success on an individual trial is p and failure is $q = (1-p)$, then the binomial probability is as follows. Which is also, cmf(X).
+
+$$ 
+pmf(x) =  P(X=x) =  
+\begin{cases}
+{n\choose x} \cdot p^x \cdot q^{n-x} , x = 0,1,....n\\
+0,  otherwise
+\end{cases}
+$$
+
+##**b. **
+Cumulative probability function of X, $F(X):$ is the summation of individual probability functions until x. 
+$$
+CPF(x) = F(X=x) = \sum_{n=i}^{x} {n\choose i} \cdot p^i \cdot q^{n-i} 
+$$
+
+##**c. **
+$E(X):$
+
+For Binomial probability distribution, $E(X)$ is $n . p$
+$$
+E(X) = n.p = 2 * 3/4 = 3/2 = 1.5
+$$
+
+##**d. **
+$var(X):$
+
+For Binomial probability distribution, $var(X)$ is $n . p .q$, where $q = (1-p)$
+
+$$
+var(X) = n.p.q = 2 * 3/4 * 1/4 = 3/8
+$$
+
+#**3. Relating Min and Max**
+
+It is given that continuous random variables X and Y have a joint distribution with probability density function $f(x,y).$
+
+$$
+f(x,y) = 
+\begin{cases}
+2,  \text{ 0 < y < x < 1}\\
+0,  \text{ otherwise.}
+\end{cases}
+$$
+
+
+
+##**a. **
+
+```{r echo=FALSE}
+x <- c(0:1)
+y <- c(0:1)
+plot(x,y, xlab = "0 < y < x < 1")
+abline(0,1)
+
+# Create data for the area to shade
+cord.x <- 0:1
+cord.y <- y < x
+
+polygon(cord.x,cord.y,col='skyblue')
+```
+
+
+
+##**b. **
+
+The marginal probability density function of $X$, $f_X(x)$:
+
+$$
+f_X(x) = \int_{-\infty}^{\infty} f(x,y) dy =  \int_{0}^{x} 2.dy = 2 [y]_0 ^x = 2x
+$$
+$\implies f_X(x)$ = $2x$
+
+##**c. **
+
+Unconditional expectation of $X$, $E(X)$:
+
+$$
+E(X) = \int_{0}^{1} x.f_X(x)dx = \int_{0}^{1} x.2x.dx = 2. \int_{0}^{1} x^2.dx = 2[x^3/3]_0 ^1 = 2/3
+$$
+
+$\implies E(X) = 2/3$
+
+##**d. **
+
+The conditional probability density function of $Y$, conditional on $X$, $f_{Y|X}(y|x)$:
+$$
+f_{Y|X} = f(x,y)/f_X(x) = 2/2x = 1/x
+$$
+$\implies f_{Y|X}(y|x) = 1/x$.
+
+
+##**e. **
+
+The conditional expectation of $Y$, conditional on $X$, $E(Y|X)$:
+
+$$
+E(Y|X) = \int_{0}^{x} y.f_{Y|X}(Y|X)dy =  \int_{0}^{x} (y/x). dy = 1/x . [y^2/2]_0 ^ x = x/2
+ $$
+$\implies E(Y|X) = x/2$
+
+##**f. **
+
+$E(XY)$:
+
+$$
+E(XY) = E[E[XY|X]] = E[X. E[Y|X]] = E[x . x/2] = 1/2 . E[X^2]
+$$
+$$
+\text{Calculating }E[X^2] = \int_{0}^{1} x^2. f_X(x)dx = \int_{0}^{1} (x^2.2x)dx =  2. \int_{0}^{1} (x^3)dx = 2. [x^4/4]_0 ^1 = 1/2 
+$$
+$\implies E(XY) = 1/2 . E[X^2] = 1/2 * 1/2 = 1/4$
+
+##**g. **
+
+$cov(X,Y)$:
+
+$$
+\text{Calculating }E[Y] = E[E[Y|X]] = E[X/2] = 1/2. E[X] = 1/2 * 2/3 = 1/3 \implies E[Y] = 1/3
+$$
+
+$$
+cov(X,Y) = E[XY] - E[X].E[Y] = 1/4 - (2/3 * 1/3) = 1/4 - 2/9 = 1/36 
+$$
+
+$\implies cov(X,Y) = 1/36$
+
+
+
+# **4. Circles, Random Samples, and the Central Limit Theorem** 
+
+It is given that X1,X2, ...,Xn and Y1, Y2, ..., Yn are independent random samples from a uniform distribution on [−1, 1].
+Di is a random variable that indicates if (Xi, Yi) falls within the unit circle centered at the origin. The probability function of $D_i$ is given as follows:
+
+$$
+D_i = 
+\begin{cases}
+1,  (X_i^2+Y_i^2)<1\\
+0,  \text{ otherwise.}
+\end{cases}
+$$
+
+From above probability function, we can say that Di is a Bernoulli variable. And, all Di are independent and identically distributed.
+
+##**a. **
+
+$E(D_i)$:
+For Bernoulli random variables, Expectation of $X$ is defined as follows:
+
+$$
+E(X) = \sum_{x=0}^{1} x . f(x) = 0 . P(!D_i) + 1 . P(D_i) = P(D_i) = \frac{\pi . (1)^2}{2^2} = \frac{\pi}{4}
+$$
+
+$\implies E(X) = \frac{\pi}{4}$
+
+##**b. **
+
+$SD(D_i)$:
+For Bernoulli random variables, Standard Deviation of $X$ is defined as follows:
+
+$$
+SD(X) = \sqrt{p . (1-p)} = \sqrt{P(D_i) . P(!D_i)} = \sqrt{\frac{\pi}{4} . ( 1 - \frac{\pi}{4})} = \frac{\sqrt{\pi .(4 - \pi)}}{4}
+$$
+$\implies SD(X) = \sigma = \frac{\sqrt{\pi .(4 - \pi)}}{4}$
+
+##**c. **
+$SD(\overline{D})$:
+
+From Central Limit Theorem, we know that the standard deviation (or standard error) of a sample is equivalent to $\frac{1}{\sqrt{n}}$ of $SD(X)$:
+
+$$
+SD(\overline{D}) = \frac{\sigma}{\sqrt(n)} = \frac{\frac{\sqrt{\pi .(4 - \pi)}}{4}}{\sqrt{n}} 
+$$
+
+##**d. **
+
+Let n=100. Using the Central Limit Theorem, the probability that $\overline{D}$ is larger than 3/4, $P(\overline{x} > \frac{3}{4})$:
+
+$$
+P(\overline{x} > \frac{3}{4}) = p(Z > \frac{\frac{3}{4}-\frac{\pi}{4}}{\frac{\sqrt{\pi. (4 - \pi)}}{40}}) = P(Z > - 0.86) = P(Z < 0.86) = 0.8051
+$$
+
+$\implies P(\overline{x} > \frac{3}{4}) = 0.8051$
+
+##**e. **
+
+Let $X$ and $Y$ be two random samples from a uniform distribution on [−1, 1]. And, $D$ be a random variable defined if $X^2+Y^2 < 1$.
+
+```{r}
+set.seed(0)
+n = 100
+X <- runif(n, min=-1, max=1)
+Y <- runif(n, min=-1, max=1)
+
+D <- (X**2+Y**2) < 1
+plot(X,Y, col=D+1, asp=1)
+
+
+```
+##**f. **
+
+The sample average $\overline{D}$:
+
+```{r}
+(mean(D))
+```
+From **part a**, we got $E(X) = \frac{\pi}{4}$ $\implies E(X) = 0.7853$. From 100 samples for $D_i$,  the average we see is `r mean(D)`.
+
+##**g. **
+
+Let us now examine to replicate the previous experiment 10,000 times, generating a sample average of the Di
+each time. 
+
+```{r}
+execute_study = function(n){
+Xi <- runif(n, min=-1, max=1)
+Yi <- runif(n, min=-1, max=1)
+Di <- (Xi**2+Yi**2) < 1
+mean(Di)
+}
+l <- c()
+for (i in 1:10000) {
+l[i] <- execute_study(n)
+}
+```
+Plotting a histogram for above sample averages:
+
+```{r}
+hist(l, xlab= paste("Sample Mean of n =", n, "Random Variables "), ylab="Frequency",
+     main= paste("Hist of Sample Means of size n =", n), breaks="FD")
+box()
+```
+
+##**h. **
+
+```{r}
+paste("Standard Deviation of 10,000 trials of size n =", n, "is", sd(l))
+```
+
+From **part c**, we see that the approximation of standard deviation for a sample of $n=100$ is: 
+$$
+\frac{\frac{\sqrt{\pi .(4 - \pi)}}{4}}{\sqrt{100}} = \frac{\sqrt{\pi .(4 - \pi)}}{40} = 0.041054
+$$
+
+##**i. **
+
+The fraction of sample averages that are larger that 3/4 is:
+
+```{r}
+(Z <- sum(l>0.75)/10000)
+```
+
+From **part d**, we see that $P(\overline{x} > \frac{3}{4}) = 0.8051$
+
